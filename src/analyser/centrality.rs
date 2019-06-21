@@ -1,14 +1,12 @@
+use num_traits::Zero;
 use petgraph::{graph::NodeIndex, visit::EdgeRef, Graph, Undirected};
 use rayon::prelude::*;
-use num_traits::Zero;
 use std::collections::{HashMap, VecDeque};
 use std::{f64, iter};
 
 type Predecessors = HashMap<NodeIndex, Vec<NodeIndex>>;
 
-struct CB {
-    betweenness: HashMap<NodeIndex, f64>,
-}
+struct CB(HashMap<NodeIndex, f64>);
 
 struct BrandesNet {
     stack: Vec<NodeIndex>,
@@ -17,26 +15,37 @@ struct BrandesNet {
     start: NodeIndex,
 }
 
+impl BrandesNet {
+    fn to_deltas(mut self) -> HashMap<NodeIndex, f64> {
+        let mut delta: HashMap<NodeIndex, f64> =
+            self.stack.iter().cloned().zip(iter::repeat(0.0)).collect();
+        while let Some(w) = self.stack.pop() {
+            let coeff = (1.0 + delta[&w]) / (self.sigma[&w] as f64);
+            for v in self.pred.get(&w).unwrap_or(&Vec::new()) {
+                let sigma_v = self.sigma[&v];
+                let delta_v = delta.get_mut(&v).unwrap();
+                *delta_v += (sigma_v as f64) * coeff;
+            }
+        }
+        delta.insert(self.start, 0.0);
+        delta
+    }
+}
+
 pub fn betweenness_centrality<N, E>(g: &Graph<N, E, Undirected>) -> HashMap<NodeIndex, f64>
 where
     N: Sync,
     E: Zero + Ord + Copy + Sync,
 {
     let mut betweenness = CB::new(g);
-    //    for s in g.node_indices() {
-    //        let (mut stack, pred, sigma) = single_source_dijkstra_path(g, &s);
-    //        betweenness.accumulate_basic(&mut stack, pred, sigma, s);
-    //    }
-    let nets: Vec<NodeIndex> = g.node_indices().collect();
-    let nets: Vec<BrandesNet> = nets
+    let indecies: Vec<NodeIndex> = g.node_indices().collect();
+    let deltas: Vec<HashMap<NodeIndex, f64>> = indecies
         .par_iter()
-        .map(|s| {
-            single_source_dijkstra_path(g, *s)
-        })
+        .map(|s| single_source_dijkstra_path(g, *s).to_deltas())
         .collect();
 
-    for mut bn in nets {
-        betweenness.accumulate_basic(&mut bn);
+    for delta in deltas {
+        betweenness.increment_by_deltas(delta);
     }
 
     let n = g.node_count();
@@ -45,35 +54,47 @@ where
     } else {
         1.0 / (((n - 1) * (n - 2)) as f64)
     };
-    for v in betweenness.betweenness.values_mut() {
+    for v in betweenness.inner_mut().values_mut() {
         *v *= scale;
     }
 
-    betweenness.betweenness.clone()
+    betweenness.into_inner()
 }
 
 impl CB {
-    fn new<N, E>(graph: &Graph<N, E, Undirected>) -> CB where E: Zero + Ord + Copy {
-        CB {
-            betweenness: graph.node_indices().zip(iter::repeat(Zero::zero())).collect(),
+    fn new<N, E>(graph: &Graph<N, E, Undirected>) -> CB
+    where
+        E: Zero + Ord + Copy,
+    {
+        CB(graph
+            .node_indices()
+            .zip(iter::repeat(Zero::zero()))
+            .collect())
+    }
+
+    fn accumulate_basic(&mut self, bn: BrandesNet) {
+        let delta = bn.to_deltas();
+        for w in delta.keys() {
+            let cb_w = self.inner_mut().entry(*w).or_insert(0.0);
+            *cb_w += delta[&w];
         }
     }
 
-    fn accumulate_basic(&mut self, bn: &mut BrandesNet) {
-        let mut delta: HashMap<NodeIndex, f64> =
-            bn.stack.iter().cloned().zip(iter::repeat(0.0)).collect();
-        while let Some(w) = bn.stack.pop() {
-            let coeff = (1.0 + delta[&w]) / (bn.sigma[&w] as f64);
-            for v in bn.pred.get(&w).unwrap_or(&Vec::new()) {
-                let sigma_v = bn.sigma[&v];
-                let delta_v = delta.get_mut(&v).unwrap();
-                *delta_v += (sigma_v as f64) * coeff;
-            }
-            if w != bn.start {
-                let cb_w = self.betweenness.entry(w).or_insert(0.0);
-                *cb_w += delta[&w];
-            }
+    fn increment_by_deltas(&mut self, deltas: HashMap<NodeIndex, f64>) {
+        for w in deltas.keys() {
+            let cb_w = self.inner_mut().entry(*w).or_insert(0.0);
+            *cb_w += deltas[&w];
         }
+    }
+
+    fn inner_mut(&mut self) -> &mut HashMap<NodeIndex, f64> {
+        let CB(i) = self;
+        i
+    }
+
+    fn into_inner(self) -> HashMap<NodeIndex, f64> {
+        let CB(i) = self;
+        i
     }
 }
 
@@ -116,10 +137,10 @@ impl CB {
 //    (stack, pred, sigma)
 //}
 
-fn single_source_dijkstra_path<N, E>(
-    g: &Graph<N, E, Undirected>,
-    s: NodeIndex,
-) -> BrandesNet where E: Zero + Ord + Copy, {
+fn single_source_dijkstra_path<N, E>(g: &Graph<N, E, Undirected>, s: NodeIndex) -> BrandesNet
+where
+    E: Zero + Ord + Copy,
+{
     let mut pred: Predecessors = g.node_indices().zip(iter::repeat_with(Vec::new)).collect();
 
     let mut dist: HashMap<NodeIndex, Option<E>> =
@@ -168,5 +189,10 @@ fn single_source_dijkstra_path<N, E>(
             }
         }
     }
-    BrandesNet{stack, pred, sigma, start: s}
+    BrandesNet {
+        stack,
+        pred,
+        sigma,
+        start: s,
+    }
 }
