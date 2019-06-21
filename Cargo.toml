@@ -1,0 +1,15 @@
+[package]
+name = "rorqual"
+version = "0.1.0"
+authors = ["Christian Rades <c.rades@shopware.com>"]
+edition = "2018"
+
+[dependencies]
+clap = "2.33.0"
+git2 = "0.8"
+petgraph = "0.4.13"
+rayon = "1.0.3"
+chrono = "0.4.6"
+chrono-tz = "0.5.1"
+num-traits = "0.2.8"
+ordered-float = "1.0.2"
