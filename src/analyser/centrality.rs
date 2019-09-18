@@ -48,17 +48,7 @@ where
         betweenness.increment_by_deltas(delta);
     }
 
-    let n = g.node_count();
-    let scale = if n <= 2 {
-        1.0
-    } else {
-        1.0 / (((n - 1) * (n - 2)) as f64)
-    };
-    for v in betweenness.inner_mut().values_mut() {
-        *v *= scale;
-    }
-
-    betweenness.into_inner()
+    betweenness.into_normal().into_inner()
 }
 
 impl CB {
@@ -85,6 +75,20 @@ impl CB {
             let cb_w = self.inner_mut().entry(*w).or_insert(0.0);
             *cb_w += deltas[&w];
         }
+    }
+
+    fn into_normal(self) -> CB {
+        let CB(mut i) = self;
+        let n = i.len();
+        let scale = if n <= 2 {
+            1.0
+        } else {
+            1.0 / (((n - 1) * (n - 2)) as f64)
+        };
+        for v in i.values_mut() {
+            *v *= scale;
+        }
+        CB(i)
     }
 
     fn inner_mut(&mut self) -> &mut HashMap<NodeIndex, f64> {

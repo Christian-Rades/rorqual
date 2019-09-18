@@ -13,10 +13,10 @@ pub struct GitFilter {
     path_filters: Vec<String>,
 }
 
-pub fn repo_to_graph(path: std::path::PathBuf) -> Graph<String, i64, Undirected> {
+pub fn repo_to_graph(path: std::path::PathBuf) -> Graph<HashMap<String, String>, i64, Undirected> {
     let mut files: HashMap<String, NodeIndex> = HashMap::new();
     let mut edges: HashMap<(NodeIndex, NodeIndex), i64> = HashMap::new();
-    let mut graph = Graph::<String, i64, Undirected>::new_undirected();
+    let mut graph = Graph::<HashMap<String, String>, i64, Undirected>::new_undirected();
 
     let repo = Repository::open(path).unwrap();
     let commit_trees = search_repo(&repo).unwrap();
@@ -46,7 +46,12 @@ pub fn repo_to_graph(path: std::path::PathBuf) -> Graph<String, i64, Undirected>
                         .to_string();
                     let node = files
                         .entry(name.clone())
-                        .or_insert_with(|| graph.add_node(name));
+                        .or_insert_with(
+                            || {
+                                let mut hm = HashMap::new();
+                                hm.insert("file".into(), name);
+                                graph.add_node(hm)
+                            });
                     commit_files.push(node.clone());
                 }
                 Delta::Deleted => {
@@ -76,7 +81,7 @@ pub fn repo_to_graph(path: std::path::PathBuf) -> Graph<String, i64, Undirected>
         graph.add_edge(a, b, inv_weight);
     }
 
-    graph.retain_nodes(|g, node_i| !deleted.contains(&g[node_i]));
+    graph.retain_nodes(|g, node_i| !deleted.contains(&g[node_i]["file"]));
     graph
 }
 
@@ -87,7 +92,7 @@ fn search_repo(repo: &Repository) -> Result<Vec<git2::Tree>, git2::Error> {
 
     let mut p = Parsed::default();
 
-    format::parse(&mut p, "18-05-2018", StrftimeItems::new("%d-%m-%Y")).unwrap();
+    format::parse(&mut p, "2018-01-01", StrftimeItems::new("%Y-%m-%d")).unwrap();
     p.hour_mod_12 = Some(0);
     p.hour_div_12 = Some(0);
     p.minute = Some(0);
@@ -99,6 +104,7 @@ fn search_repo(repo: &Repository) -> Result<Vec<git2::Tree>, git2::Error> {
     let commit_trees: Vec<git2::Tree> = rev_walk
         .flat_map(|commit_id| repo.find_commit(commit_id.unwrap()))
         .take_while(|commit| commit.time().seconds() > dt.naive_utc().timestamp())
+//        .filter(|commit| commit.message().and_then(|msg: &str| Some(msg.contains("Merge pull request"))).unwrap_or(false))
         .flat_map(|commit| commit.tree())
         .collect();
     Ok(commit_trees)

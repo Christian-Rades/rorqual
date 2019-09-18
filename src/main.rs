@@ -2,8 +2,10 @@ mod git2graph;
 mod analyser;
 
 use petgraph::graph::NodeIndex;
+use petgraph::dot::{Dot, Config};
+use petgraph_graphml::GraphMl;
 use clap::{App, Arg};
-use std::{env};
+use std::{env, fs::File, io::Write};
 
 
 fn main() -> std::io::Result<()> {
@@ -21,24 +23,41 @@ fn main() -> std::io::Result<()> {
         env::current_dir()?
     };
 
-    let commit_graph = git2graph::repo_to_graph(repo_path);
+    let mut foldername: String = repo_path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap()
+        .to_owned();
+    foldername.push_str(".graphml");
 
-    //    output_graph(&commit_graph);
+    let out = File::create(env::current_dir()?.join(foldername))?;
 
-    let mut bc: Vec<(NodeIndex, f64)> = analyser::centrality::betweenness_centrality(&commit_graph).into_iter().collect();
-    bc.sort_by(|(_, ba), (_, bb)| ba.partial_cmp(bb).unwrap());
-    bc.reverse();
+    let mut commit_graph = git2graph::repo_to_graph(repo_path);
 
-    for (vertex, betweenness) in bc {
-        if betweenness == 0.0 {
-            continue;
+    let mut bc = analyser::centrality::betweenness_centrality(&commit_graph);
+    for (vertex, betweenness) in bc.into_iter() {
+        if let Some(hm) = commit_graph.node_weight_mut(vertex) {
+            hm.insert("centrality".into(), format!("{:.6}", betweenness));
         }
-        println!(
-            "{} -> {1:.6}",
-            commit_graph.node_weight(vertex).unwrap(),
-            betweenness
-        );
+        else {
+            commit_graph.remove_node(vertex);
+        }
     }
+    let stuff = GraphMl::new(&commit_graph).pretty_print(true).export_node_weights(
+        Box::new(|node| {
+            let name = node["file"].split("/").last().unwrap();
+            let last_slash = node["file"].rfind('/').unwrap_or(0);
+            let (module, _) = node["file"].split_at(last_slash);
+            let centrality = &node["centrality"];
+            vec![
+                ("name".into(), name.into()),
+                ("module".into(), module.into()),
+                ("centrality".into(), centrality.into())
+            ]
+        })
+    )
+    .export_edge_weights_display();
+    stuff.to_writer(out)?;
+
     Ok(())
 }
-
