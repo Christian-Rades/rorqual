@@ -1,0 +1,14 @@
+changes
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# Author:    John Doe <john@doe.org>
+#
+# On branch master
+# Changes to be committed:
+#	new file:   copy_of_readme
+#	modified:   modified
+#	new file:   new_file
+#	renamed:    deleted_old -> renamed_new
+#	deleted:    renamed_old
+#

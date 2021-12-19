@@ -14,7 +14,7 @@ fn main() -> std::io::Result<()> {
         .author("CR")
         .about("Graph analysis for git repos")
         .arg(Arg::with_name("debug").short("d").long("debug"))
-        .arg(Arg::with_name("repo").help("path to the repo"))
+        .arg(Arg::with_name("repo").long("repo").takes_value(true).help("path to the repo"))
         .get_matches();
 
     let repo_path = if let Some(rel_path) = matches.value_of("repo") {
@@ -36,28 +36,25 @@ fn main() -> std::io::Result<()> {
 
     let mut bc = analyser::centrality::betweenness_centrality(&commit_graph);
     for (vertex, betweenness) in bc.into_iter() {
-        if let Some(hm) = commit_graph.node_weight_mut(vertex) {
-            hm.insert("centrality".into(), format!("{:.6}", betweenness));
-        }
-        else {
-            commit_graph.remove_node(vertex);
+        if let Some(hm) = commit_graph.node_weight(vertex) {
+            println!("{} {:.6}", hm["file"], betweenness);
         }
     }
-    let stuff = GraphMl::new(&commit_graph).pretty_print(true).export_node_weights(
-        Box::new(|node| {
-            let name = node["file"].split("/").last().unwrap();
-            let last_slash = node["file"].rfind('/').unwrap_or(0);
-            let (module, _) = node["file"].split_at(last_slash);
-            let centrality = &node["centrality"];
-            vec![
-                ("name".into(), name.into()),
-                ("module".into(), module.into()),
-                ("centrality".into(), centrality.into())
-            ]
-        })
-    )
-    .export_edge_weights_display();
-    stuff.to_writer(out)?;
-
+//     let stuff = GraphMl::new(&commit_graph).pretty_print(true).export_node_weights(
+//         Box::new(|node| {
+//             let name = node["file"].split("/").last().unwrap();
+//             let last_slash = node["file"].rfind('/').unwrap_or(0);
+//             let (module, _) = node["file"].split_at(last_slash);
+//             let centrality = &node["centrality"];
+//             vec![
+//                 ("name".into(), name.into()),
+//                 ("module".into(), module.into()),
+//                 ("centrality".into(), centrality.into())
+//             ]
+//         })
+//     )
+//     .export_edge_weights_display();
+//     stuff.to_writer(out)?;
+//
     Ok(())
 }
