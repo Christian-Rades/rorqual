@@ -14,41 +14,52 @@ pub struct GitFilter {
     path_filters: Vec<String>,
 }
 
-pub struct GitFile {
-    status: Delta,
-    name: String,
-}
-
 //Idea to intern filepaths it's prob shit
 struct InternedPath<'a> {
     parent: Option<&'a InternedPath<'a>>,
     element: String,
 }
 
-pub struct GitGraph {
-    graph: Graph<GitFile, i64, Undirected>,
-    name_table: HashMap<String, NodeIndex>,
-}
+pub fn repo_to_changesets(path: std::path::PathBuf) -> Vec<git_graph::ChangeSet> {
+    let mut graph = Graph::<HashMap<String, String>, i64, Undirected>::new_undirected();
 
-type ChangeSet = Vec<GitFile>;
+    let repo = Repository::open(path).unwrap();
+    let commit_trees = search_repo(&repo).unwrap();
+    let commit_trees: Vec<git2::Tree> = commit_trees.into_iter().collect();
 
-pub fn build_graph(changes: Vec<ChangeSet>) -> Result<GitGraph, Box<dyn Error>> {
-    changes.into_par_iter().map(|cs: ChangeSet| todo!());
-    Ok(GitGraph {
-        graph: Graph::new_undirected(),
-        name_table: HashMap::new(),
-    })
-}
+    let mut options = DiffOptions::new();
+    //no big impact
+    options.skip_binary_check(true);
 
-#[test]
-fn test_build_graph() {
-    let changes = vec![vec![GitFile {
-        status: Delta::Added,
-        name: "a".to_string(),
-    }]];
-    let graph = build_graph(changes).unwrap();
-    assert_eq!(1, graph.name_table.len());
-    assert_eq!(graph.graph.node_count(), graph.name_table.len());
+    let diffs = commit_trees.windows(2).flat_map(|window| match window {
+        [old, new] => repo
+            .diff_tree_to_tree(Some(old), Some(new), Some(&mut options))
+            .ok(),
+        _ => None,
+    });
+
+    let mut out: Vec<git_graph::ChangeSet> = Vec::new();
+    for d in diffs {
+        let file_count = d.deltas().count();
+        if file_count > 40 {
+            continue;
+        }
+
+        let change = d
+            .deltas()
+            .map(|delta| git_graph::GitFile {
+                name: delta
+                    .old_file()
+                    .path()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string(),
+                status: git_graph::Status::Added,
+            })
+            .collect();
+        out.push(change);
+    }
+    out
 }
 
 pub fn repo_to_graph(path: std::path::PathBuf) -> Graph<HashMap<String, String>, i64, Undirected> {
@@ -147,22 +158,10 @@ fn search_repo(repo: &Repository) -> Result<impl Iterator<Item = git2::Tree> + '
 
     let mut commit_trees = rev_walk
         .flat_map(move |commit_id| repo.find_commit(commit_id.unwrap()))
-        .take_while(move |commit| commit.time().seconds() > dt)
-        //        .filter(|commit| commit.message().and_then(|msg: &str| Some(msg.contains("Merge pull request"))).unwrap_or(false))
+        // .take_while(move |commit| commit.time().seconds() > dt)
+        // .filter(|commit| commit.message().and_then(|msg: &str| Some(msg.contains("Merge pull request"))).unwrap_or(false))
         .flat_map(|commit| commit.tree());
     Ok(commit_trees)
-}
-
-impl GitGraph {
-    fn from_delta() -> Self {
-        GitGraph {
-            graph: Graph::new_undirected(),
-            name_table: HashMap::new(),
-        }
-    }
-    fn merge(self, other: GitGraph) -> Self {
-        self
-    }
 }
 
 fn combinations_k_2(n: usize) -> Vec<(usize, usize)> {
@@ -184,6 +183,8 @@ use std::fs::{copy, create_dir, rename};
 use std::path::Path;
 use tempfile::TempDir;
 use walkdir::WalkDir;
+
+use super::git_graph;
 
 static FIXTURES_PATH: &str = "./tests/fixtures";
 
