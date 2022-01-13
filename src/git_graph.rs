@@ -33,6 +33,7 @@ pub type ChangeSet = Vec<GitFile>;
 pub fn build_graph(changes: Vec<ChangeSet>) -> GitGraph {
     changes
         .into_par_iter()
+        .filter(|set| set.len() < 40)
         .map(GitGraph::from_chageset)
         .reduce(GitGraph::default, |a, b| a.merge(b))
 }
