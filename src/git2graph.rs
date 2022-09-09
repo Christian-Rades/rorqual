@@ -3,15 +3,15 @@ use chrono::{DateTime, Utc};
 use git2::{Delta, DiffDelta, DiffOptions, Repository, Sort, Tree};
 use petgraph::{graph::NodeIndex, Graph, Undirected};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use regex::RegexSet;
 use std::error::Error;
 
 use std::collections::{HashMap, HashSet};
 
 pub struct GitFilter {
-    start_date: Option<DateTime<Utc>>,
-    end_date: Option<DateTime<Utc>>,
-    max_commits: Option<u32>,
-    path_filters: Vec<String>,
+    pub start_date: Option<DateTime<Utc>>,
+    pub max_commits: Option<u32>,
+    pub path_filters: RegexSet,
 }
 
 //Idea to intern filepaths it's prob shit
@@ -20,11 +20,14 @@ struct InternedPath<'a> {
     element: String,
 }
 
-pub fn repo_to_changesets(path: std::path::PathBuf) -> Vec<git_graph::ChangeSet> {
+pub fn repo_to_changesets(
+    path: std::path::PathBuf,
+    filter: &GitFilter,
+) -> Vec<git_graph::ChangeSet> {
     let mut graph = Graph::<HashMap<String, String>, i64, Undirected>::new_undirected();
 
     let repo = Repository::open(path).unwrap();
-    let commit_trees = search_repo(&repo).unwrap();
+    let commit_trees = search_repo(&repo, filter).unwrap();
     let commit_trees: Vec<git2::Tree> = commit_trees.into_iter().collect();
 
     let mut options = DiffOptions::new();
@@ -51,6 +54,9 @@ pub fn repo_to_changesets(path: std::path::PathBuf) -> Vec<git_graph::ChangeSet>
                     .to_string(),
                 status: delta_status(&delta),
             })
+            .filter(|file| {
+                filter.path_filters.is_empty() || filter.path_filters.is_match(&file.name)
+            })
             .collect();
         out.push(change);
     }
@@ -65,38 +71,23 @@ fn delta_status(delta: &DiffDelta) -> git_graph::Status {
     }
 }
 
-fn search_repo(repo: &Repository) -> Result<impl Iterator<Item = git2::Tree> + '_, git2::Error> {
+fn search_repo<'repo>(
+    repo: &'repo Repository,
+    filter: &GitFilter,
+) -> Result<impl Iterator<Item = git2::Tree<'repo>> + 'repo, git2::Error> {
     let mut rev_walk = repo.revwalk()?;
     rev_walk.set_sorting(Sort::NONE);
     rev_walk.push_head()?;
 
-    let mut p = Parsed::default();
+    let dt = filter.start_date.unwrap().naive_utc().timestamp();
 
-    format::parse(&mut p, "2018-01-01", StrftimeItems::new("%Y-%m-%d")).unwrap();
-    p.hour_mod_12 = Some(0);
-    p.hour_div_12 = Some(0);
-    p.minute = Some(0);
-    p.second = Some(0);
-    let dt = p
-        .to_datetime_with_timezone(&chrono_tz::Europe::Berlin)
-        .unwrap()
-        .naive_utc()
-        .timestamp();
-
-    let mut commit_trees = rev_walk
+    let commit_trees = rev_walk
         .flat_map(move |commit_id| repo.find_commit(commit_id.unwrap()))
-        // .take_while(move |commit| commit.time().seconds() > dt)
+        .take_while(move |commit| commit.time().seconds() > dt)
+        .filter(|commit| commit.parents().len() != 1)
         // .filter(|commit| commit.message().and_then(|msg: &str| Some(msg.contains("Merge pull request"))).unwrap_or(false))
         .flat_map(|commit| commit.tree());
     Ok(commit_trees)
-}
-
-#[test]
-fn test_combinations() {
-    let c = combinations_k_2(4);
-    let expected: Vec<(usize, usize)> = vec![(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)];
-    assert_eq!(c.len(), expected.len());
-    assert_eq!(c, expected);
 }
 
 use std::fs::{copy, create_dir, rename};

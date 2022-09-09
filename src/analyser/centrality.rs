@@ -1,23 +1,24 @@
 use num_traits::Zero;
 use petgraph::{graph::NodeIndex, visit::EdgeRef, Graph, Undirected};
 use rayon::prelude::*;
-use std::collections::{HashMap, VecDeque};
+use rustc_hash::FxHashMap;
+use std::collections::VecDeque;
 use std::{f64, iter};
 
-type Predecessors = HashMap<NodeIndex, Vec<NodeIndex>>;
+type Predecessors = FxHashMap<NodeIndex, Vec<NodeIndex>>;
 
-struct CB(HashMap<NodeIndex, f64>);
+struct CB(FxHashMap<NodeIndex, f64>);
 
 struct BrandesNet {
     stack: Vec<NodeIndex>,
     pred: Predecessors,
-    sigma: HashMap<NodeIndex, usize>,
+    sigma: FxHashMap<NodeIndex, usize>,
     start: NodeIndex,
 }
 
 impl BrandesNet {
-    fn to_deltas(mut self) -> HashMap<NodeIndex, f64> {
-        let mut delta: HashMap<NodeIndex, f64> =
+    fn to_deltas(mut self) -> FxHashMap<NodeIndex, f64> {
+        let mut delta: FxHashMap<NodeIndex, f64> =
             self.stack.iter().cloned().zip(iter::repeat(0.0)).collect();
         while let Some(w) = self.stack.pop() {
             let coeff = (1.0 + delta[&w]) / (self.sigma[&w] as f64);
@@ -32,14 +33,14 @@ impl BrandesNet {
     }
 }
 
-pub fn betweenness_centrality<N, E>(g: &Graph<N, E, Undirected>) -> HashMap<NodeIndex, f64>
+pub fn betweenness_centrality<N, E>(g: &Graph<N, E, Undirected>) -> FxHashMap<NodeIndex, f64>
 where
     N: Sync,
     E: Zero + Ord + Copy + Sync,
 {
     let mut betweenness = CB::new(g);
     let indecies: Vec<NodeIndex> = g.node_indices().collect();
-    let deltas: Vec<HashMap<NodeIndex, f64>> = indecies
+    let deltas: Vec<FxHashMap<NodeIndex, f64>> = indecies
         .par_iter()
         .map(|s| single_source_dijkstra_path(g, *s).to_deltas())
         .collect();
@@ -66,14 +67,14 @@ impl CB {
         let delta = bn.to_deltas();
         for w in delta.keys() {
             let cb_w = self.inner_mut().entry(*w).or_insert(0.0);
-            *cb_w += delta[&w];
+            *cb_w += delta[w];
         }
     }
 
-    fn increment_by_deltas(&mut self, deltas: HashMap<NodeIndex, f64>) {
+    fn increment_by_deltas(&mut self, deltas: FxHashMap<NodeIndex, f64>) {
         for w in deltas.keys() {
             let cb_w = self.inner_mut().entry(*w).or_insert(0.0);
-            *cb_w += deltas[&w];
+            *cb_w += deltas[w];
         }
     }
 
@@ -91,12 +92,12 @@ impl CB {
         CB(i)
     }
 
-    fn inner_mut(&mut self) -> &mut HashMap<NodeIndex, f64> {
+    fn inner_mut(&mut self) -> &mut FxHashMap<NodeIndex, f64> {
         let CB(i) = self;
         i
     }
 
-    fn into_inner(self) -> HashMap<NodeIndex, f64> {
+    fn into_inner(self) -> FxHashMap<NodeIndex, f64> {
         let CB(i) = self;
         i
     }
@@ -107,14 +108,14 @@ impl CB {
 //    s: NodeIndex,
 //) -> (
 //    Vec<NodeIndex>,
-//    HashMap<NodeIndex, Vec<NodeIndex>>,
-//    HashMap<NodeIndex, f64>,
+//    FxHashMap<NodeIndex, Vec<NodeIndex>>,
+//    FxHashMap<NodeIndex, f64>,
 //) {
 //    let mut pred: Predecessors = g.node_indices().zip(iter::repeat_with(Vec::new)).collect();
 //
-//    let mut dist: HashMap<NodeIndex, f64> =
+//    let mut dist: FxHashMap<NodeIndex, f64> =
 //        g.node_indices().zip(iter::repeat(f64::INFINITY)).collect();
-//    let mut sigma: HashMap<NodeIndex, f64> = HashMap::new();
+//    let mut sigma: FxHashMap<NodeIndex, f64> = HashMap::new();
 //
 //    let mut queue: VecDeque<NodeIndex> = VecDeque::new();
 //    let mut stack = Vec::new();
@@ -147,11 +148,11 @@ where
 {
     let mut pred: Predecessors = g.node_indices().zip(iter::repeat_with(Vec::new)).collect();
 
-    let mut dist: HashMap<NodeIndex, Option<E>> =
+    let mut dist: FxHashMap<NodeIndex, Option<E>> =
         g.node_indices().zip(iter::repeat(None)).collect();
-    let mut sigma: HashMap<NodeIndex, usize> = HashMap::new();
+    let mut sigma: FxHashMap<NodeIndex, usize> = FxHashMap::default();
 
-    let mut seen: HashMap<NodeIndex, E> = HashMap::new();
+    let mut seen: FxHashMap<NodeIndex, E> = FxHashMap::default();
     let mut queue: VecDeque<(NodeIndex, NodeIndex, E)> = VecDeque::new();
     let mut stack = Vec::new();
 

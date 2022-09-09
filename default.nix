@@ -7,7 +7,7 @@ rustPlatform.buildRustPackage rec {
   pname = "rorqual";
   version = "0.0.1";
 
-  nativeBuildInputs=[ rust-analyzer rustfmt clippy openssl openssl.dev pkg-config];
+  nativeBuildInputs=[ rust-analyzer cargo-flamegraph rustfmt clippy openssl openssl.dev pkg-config];
   buildInputs = [
     rustfmt
     clippy
@@ -19,5 +19,5 @@ rustPlatform.buildRustPackage rec {
 
   src = ./.;
 
-  cargoSha256 = "16hn66h1v2mq0mhk7npmdrsrk8i4l8zpcwzrbqmlplpav7y2hsj5";
+  cargoSha256 = "sha256-CNe8ljVebCu6n71pa4Y+OoOJfE78qnSYZJMhfRbRGKk=";
 }

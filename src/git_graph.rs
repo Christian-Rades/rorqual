@@ -1,6 +1,6 @@
 // TODO Only for test purposes REMOVE ME
 #![allow(dead_code)]
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use petgraph::{
     data::Build,
@@ -25,7 +25,7 @@ pub struct GitFile {
 #[derive(Default)]
 pub struct GitGraph {
     pub graph: Graph<GitFile, i64, Undirected>,
-    name_table: HashMap<String, NodeIndex>,
+    pub name_table: FxHashMap<String, NodeIndex>,
 }
 
 pub type ChangeSet = Vec<GitFile>;
@@ -41,7 +41,7 @@ pub fn build_graph(changes: Vec<ChangeSet>) -> GitGraph {
 impl GitGraph {
     fn from_chageset(changes: ChangeSet) -> Self {
         let mut graph = Graph::new_undirected();
-        let mut name_table = HashMap::new();
+        let mut name_table = FxHashMap::default();
         let mut nodes: Vec<NodeIndex> = Vec::new();
 
         for file in changes {
@@ -79,8 +79,7 @@ impl GitGraph {
             .edge_references()
             .map(|e| (e.source(), e.target(), e.weight().to_owned()))
             .collect();
-        let mut index_rewrites: HashMap<NodeIndex, NodeIndex> =
-            HashMap::with_capacity(old_names.len());
+        let mut index_rewrites: FxHashMap<NodeIndex, NodeIndex> = FxHashMap::default();
 
         for old_node in old_graph.into_nodes_edges().0.into_iter() {
             let name = old_node.weight.name.clone();
